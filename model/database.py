@@ -1,14 +1,14 @@
-from classes import Result
-import sqlite3
+import sqlite3, json
 import os.path as path
+import math
 
 db_file = 'test.db'
 
-def create_db():
+def create_db(db_file=db_file) -> dict:
     """
     Create base database for the app
     """
-
+    result={'success':False,'message':'','data':None}
     #format db name and add extension name if not specified
     #now useless, remove if useless in the end of the project
     db_file = db_file.lower()
@@ -19,12 +19,12 @@ def create_db():
 
     #if file already exists exit
     if path.exists(db_file):
-        return Result(False,f'file {db_file} already exists, exit')
+        result['message'] = f'file {db_file} already exists, exit'
+        return result
 
     try:
         conn = sqlite3.connect(db_file)
         cursor = conn.cursor()
-        print(f'connected to {db_file} database successfully')
 
         #create locations table
         cursor.execute("""
@@ -54,19 +54,23 @@ def create_db():
         cursor.execute("CREATE INDEX idx_date_time ON irradiation (date_time);")
 
         conn.commit()
+        result['success'] = True
+        result['message'] = f'database {db_file} created successfully'
 
     except sqlite3.Error as e:
-        return Result(False, f'error during database {db_file} creation: {e}')
+        result['message'] = f'error during database {db_file} creation: {e}'
+
     finally:
         if conn:
             conn.close()
-            return Result(True,f'database {db_file} created successfully')
 
-def insert_location(name:str, lat:float, lon:float, description: str=None):
+    return result
+
+def insert_location(name:str, lat:float, lon:float, description: str=None,db_file=db_file) -> dict:
     """
     insert location in locations table
     """
-
+    result = {'success':False,'message':'','data':None}
     conn = None
 
     try:
@@ -80,15 +84,18 @@ def insert_location(name:str, lat:float, lon:float, description: str=None):
             )
         
         conn.commit()
-        return Result(True, 'location {name} added succesfully')
+        result['success'] = True
+        result['message'] = f'location {name} added succesfully'
 
     except sqlite3.Error as e:
-        return Result(False,f'error during location {name} insertion: {e}')
+        result['message'] = f'error during location {name} insertion: {e}'
     finally:
         if conn:
             conn.close()
 
-def insert_irradiation(location_id:int,date_time:str,dhi:float,bhi:float):
+    return result
+
+def insert_irradiation(location_id:int,data:list,db_file=db_file) -> dict:
     """
     Insert irradiation value in irradiation table
     Args:
@@ -97,8 +104,114 @@ def insert_irradiation(location_id:int,date_time:str,dhi:float,bhi:float):
         dhi: diffuse irradiation on orizzontal plane (W/m2)
         bhi: beam irradiation on orizzontal plane (W/m2)
     """
-    # verify date_time 
-    return Result(True,'irradiation added succesfully')
+    result = {'success':False,'message':'','data':None}
+
+    with open('test.json', 'r') as f:
+            data = json.load(f)
+
+    data_to_pull = []
+    for record in data:
+        dhi = record['dhi']
+        bhi = record['bhi']
+        date = record['date']
+        #choose if set it to 0 or skip
+        if math.isnan(dhi):
+            continue
+        if math.isnan(bhi):
+            continue
+
+        data_to_pull.append((location_id,date,dhi,bhi))
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+
+        cursor.executemany("""
+                    INSERT INTO irradiation (location_id, date_time, dhi, bhi)
+                    VALUES (?, ?, ?, ?)
+                """,data_to_pull)
+        
+        conn.commit()
+        
+        result['success'] = True
+        result['message'] = 'irradiation data insert correctly'
+    except sqlite3.Error as e:
+        result['message'] = f'error during saving irradiation data in database: {e}'
+    finally:
+        if conn:
+            conn.close()
+    return result
+
+
+def get_locations_info(db_file=db_file) -> dict:
+    '''
+    Return a dict with all the info of the locations
+    output: [{'name':'Montichiari (BS)','lat':12.56,'lon':34.67,'description':''},{...},...]
+    '''
+    result = {'success':False,'message':'','data':None}
+    conn = None
+    data_output = []
+    try:
+        conn = sqlite3.connect(db_file)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM locations")
+
+        rows = cursor.fetchall()
+
+        for row in rows:
+            data_output.append(dict(row))
+        
+
+        #with open('.t/get_all_location_output.json','w') as f:
+            #json.dump(data_output,f)
+
+        result['success'] = True
+        result['message'] = 'got locations info successfully'
+        result['data'] = data_output
+    except sqlite3.Error as e:
+        result['message'] = f'error in database: {e}'
+    finally:
+        if conn:
+            conn.close()
+
+    return result
+
+def get_last_irradiation_date(location_id,db_file=db_file) -> dict:
+    result = {'success':False,'message':'','data':None}
+    conn = None
+    last_datetime = None
+    try:
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+
+        instruction = """
+        SELECT MAX (date_time)
+        FROM irradiation
+        WHERE location_id = ?
+        """
+
+        cursor.execute(instruction,(location_id,))
+
+        value = cursor.fetchone()
+
+        if value and value[0]:
+            last_datetime = value[0]
+            result['message'] = 'finded last date successfully'
+            result['data'] = last_datetime
+        else:
+            result['message'] = 'no data founded'
+            result['data'] = None
+        result['success'] = True
+    except sqlite3.Error as e:
+        result['message'] = f'Error in database: {e}'
     
+    return result
+
+
+
+
 if __name__ == '__main__':
-    pass
+    result = insert_irradiation(1,[])
+    print(result)

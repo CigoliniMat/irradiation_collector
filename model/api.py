@@ -1,24 +1,24 @@
-from classes import Result
 import urllib.request as request #check internet connection
 import xarray as xr #to read .nc file
 import cdsapi #api
 import json, os
+import pandas as pd
 from datetime import datetime
 
 #safe site for check if there is internet connection
-#if google failed change it
-
+#make sure site is on-line
 safe_host = 'http://google.com'
 
-def safe_api_keys(url: str,key:str) -> Result: #optional
+def safe_api_keys(url: str,key:str) -> json: #optional
     '''
     from given url and key create the file needed for the api to work,
     maybe only with (url is always the same)
     '''
+    result = {'success':False,'message':'','data':None}
 
 def get_api(start_date:str,end_date:str,
         lon:float,lat:float,
-        file_position:str='.t/api_file.nc',testing:bool=False) -> Result:
+        file_position:str='.t/api_file.nc') -> json:
     '''
     Get data from api
     Args:
@@ -30,13 +30,15 @@ def get_api(start_date:str,end_date:str,
 
     output: [{date:'',dhi:12.56,bhi:34.67},{...}]
     '''
+    result = {'success':False,'message':'','data':None}
     data_output = [] #list of dict [{'date':'2005-01-01T01:00:00,'dhi':12.56,'bhi':34,56},{...},...]
 
     #check internet connection
     try:
         request.urlopen(safe_host, timeout=10)
     except Exception as e:
-        return Result(False,f'unable to connect to internet: {e}')
+        result['message'] = f'unable to connect to internet: {e}'
+        return result
     
     #api setting
     client = cdsapi.Client()
@@ -54,44 +56,42 @@ def get_api(start_date:str,end_date:str,
     try:
         client.retrieve(dataset,params,file_position)
     except Exception as e:
-        return Result(False,f'error during api call: {e}')
+        result['message'] = f'error during api call: {e}'
+        return result
     
-    ds = xr.open_dataset(file_position)
-    time_ds = ds['time'].values
-    dhi_ds = ds['DHI'].squeeze()
-    bhi_ds = ds['BHI'].squeeze()
-    iso_format = r'%Y-%m-%dT%H:%M:%S'
+    try:
+        ds = xr.open_dataset(file_position)
+        dhi_ds = ds['DHI'].squeeze()
+        bhi_ds = ds['BHI'].squeeze()
 
-    for time in time_ds:
-        date = time[:13] + ':59:59'
-        #time = 2025-08-01T23:24:45.000000000, date = 2025-08-01T23:59:59
-        #set :59:59 for a better clarity (the value is the sum of every minute for the previus value until this)
-        #the api base minute instead is not the last minute (i don't know why)
+        dataframe = pd.DataFrame({
+                    'dhi': dhi_ds.values,
+                    'bhi': bhi_ds.values
+                    }, index=dhi_ds.time.values)
+        
+        dataframe.index = pd.to_datetime(dataframe.index).floor('h')
+        dataframe.index = dataframe.index.strftime(r'%Y-%m-%dT%H:59:59')
 
-        #check if the date is a correct format, if not go to next loop
-        try:
-            datetime.strptime(date, iso_format)
-        except:
-            continue
+        dataframe.index.name = 'date'
 
-        dhi = dhi_ds.sel(time=time).values
-        bhi = bhi_ds.sel(time=time).values
+        data_output = dataframe.reset_index().to_dict(orient='records')
 
-        data_output.append({'date':date,'dhi':dhi,'bhi':bhi})
-    
-    ds.close()
-
-    if not testing:
+    except Exception as e:
+        result['message'] = f'error during dataset conversion: {e}'
+        return result
+    finally:
+        if 'ds' in locals():
+            ds.close()
         os.remove(file_position)
-    else:
-        with open('.t/api_output.json','w') as f:
-            json.dump(data_output,f)
 
-    return Result(True,'irradiation correctly dowloaded and readed',data_output)
+    result['success'] = True
+    result['message'] = 'irradiation correctly dowloaded and readed'
+    result['data'] = data_output
+    return result
 
 if __name__ == '__main__':
-    pass
-    
+   pass
+
 
 
 
