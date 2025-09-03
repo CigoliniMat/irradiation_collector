@@ -44,7 +44,7 @@ def download_irradiation() -> dict:
     else:
         return db_result
     
-    min_date = '2005-01-01' #see if with this api start at 25/01/01 or at 25/01/02
+    min_date = '2005-01-01'
 
     for location in locations_list:
         id = location['id']
@@ -60,14 +60,15 @@ def download_irradiation() -> dict:
         else:
             start_date = min_date
 
-        #from start and end date interval split the intervall to max 5 year to avoid api long request time
+        #split the intervall to max x year to avoid long api request time (take approximately 1 min for 5 year)
+        year_span = 3
         today = datetime.now()
         start_date_obj = datetime.strptime(start_date,r'%Y-%m-%d')
-        current_year = start_date_obj.year + 5        
+        current_year = start_date_obj.year + year_span      
 
         times_intervall = []
         while current_year <= today.year:
-            if current_year-5 == start_date_obj.year:
+            if current_year-year_span == start_date_obj.year:
                 start = start_date_obj.strftime(r'%Y-%m-%d')
             else:
                 start = f'{current_year}-01-01'
@@ -79,7 +80,7 @@ def download_irradiation() -> dict:
             
             times_intervall.append({'start':start,'end':end})
 
-            current_year = current_year + 5
+            current_year = current_year + year_span
 
         for time_intervall in times_intervall:
             start = time_intervall['start']
@@ -107,5 +108,4 @@ def download_irradiation() -> dict:
 
 if __name__ == '__main__':
     result = download_irradiation()
-
     print(result)

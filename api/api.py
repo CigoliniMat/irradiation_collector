@@ -1,24 +1,21 @@
-import urllib.request as request #check internet connection
-import xarray as xr #to read .nc file
-import cdsapi #api
-import json, os
+import urllib.request as request
+import xarray as xr
+import os, cdsapi
 import pandas as pd
-from datetime import datetime
 
 #safe site for check if there is internet connection
 #make sure site is on-line
 safe_host = 'http://google.com'
 
-def safe_api_keys(url: str,key:str) -> json: #optional
+def save_api_keys(url: str,key:str) -> dict['success':bool,'message':str,'data':]: #to do
     '''
-    from given url and key create the file needed for the api to work,
-    maybe only with (url is always the same)
+    from given key create the file needed for the api to work
     '''
     result = {'success':False,'message':'','data':None}
 
 def get_api(start_date:str,end_date:str,
         lon:float,lat:float,
-        file_position:str='.t/api_file.nc') -> json:
+        file_position:str='api/deleteMe.nc') -> dict['success':bool,'message':str,'data':]:
     '''
     Get data from api
     Args:
@@ -85,7 +82,7 @@ def get_api(start_date:str,end_date:str,
         os.remove(file_position)
 
     result['success'] = True
-    result['message'] = 'irradiation correctly dowloaded and readed'
+    result['message'] = 'irradiation correctly downloaded and readed'
     result['data'] = data_output
     return result
 
